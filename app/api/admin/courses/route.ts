@@ -1,16 +1,18 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-// Lấy danh sách Khóa học
+// Lấy danh sách toàn bộ Khóa học
 export async function GET() {
   try {
     const courses = await prisma.course.findMany({
-      orderBy: { createdAt: "desc" },
+      orderBy: { createdAt: 'desc' },
       include: {
-        chapters: {
-          include: { lessons: true },
-        },
-      },
+        stages: {
+          include: {
+            subjects: true // Lấy thêm subject để thống kê nếu cần
+          }
+        }
+      }
     });
     return NextResponse.json({ success: true, courses });
   } catch (error) {
@@ -30,7 +32,10 @@ export async function POST(request: Request) {
     }
 
     const newCourse = await prisma.course.create({
-      data: { title, description },
+      data: {
+        title,
+        description,
+      }
     });
 
     return NextResponse.json({ success: true, course: newCourse });

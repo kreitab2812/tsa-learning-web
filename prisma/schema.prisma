@@ -22,39 +22,65 @@ model User {
   createdAt DateTime   @default(now())
 }
 
-// 2. Khóa học tổng (VD: Tổng ôn TSA - Phần Tư duy Toán học)
+// --- TẦNG 1: KHÓA HỌC GỐC (VD: TSA - hocmai) ---
 model Course {
-  id          String    @id @default(uuid())
+  id          String   @id @default(uuid())
   title       String
   description String?
-  chapters    Chapter[]
-  createdAt   DateTime  @default(now())
+  stages      Stage[]  // Chứa nhiều Giai đoạn
+  createdAt   DateTime @default(now())
 }
 
-// 3. Chương / Tháng (VD: THÁNG 6-2026, THÁNG 7-2026)
+// --- TẦNG 2: GIAI ĐOẠN ---
+model Stage {
+  id          String    @id @default(uuid())
+  title       String
+  description String?   // Thêm mô tả Giai đoạn
+  color       String?   // Thêm mã màu (VD: #ef4444)
+  order       Int       
+  courseId    String
+  course      Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  subjects    Subject[] 
+}
+
+// --- TẦNG 3: PHÂN MÔN ---
+model Subject {
+  id          String    @id @default(uuid())
+  title       String
+  description String?   // Thêm mô tả Môn học
+  order       Int       
+  stageId     String
+  stage       Stage     @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  chapters    Chapter[] 
+}
+
+// --- TẦNG 4: CỤM KIẾN THỨC / CHƯƠNG (VD: Đại số, Hàm số) ---
 model Chapter {
-  id       String   @id @default(uuid())
-  title    String
-  order    Int      // Thứ tự hiển thị
-  courseId String
-  course   Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  lessons  Lesson[]
+  id        String   @id @default(uuid())
+  title     String
+  order     Int      // Thứ tự Cụm kiến thức
+  subjectId String
+  subject   Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  lessons   Lesson[] // Chứa nhiều Bài học
 }
 
-// 4. Bài học chi tiết (Tích hợp Học & Hành)
+// --- TẦNG 5: BÀI HỌC CHI TIẾT ---
 model Lesson {
   id          String     @id @default(uuid())
   title       String
   order       Int
-  videoUrl    String?    // Link YouTube iframe
-  documentUrl String?    // Link PDF Google Drive (Nhiệm vụ học tập / Phiếu học tập)
+  videoUrl    String?    // Link Video bài giảng
+  documentUrl String?    // Link Tài liệu học tập (Nhiệm vụ/Phiếu học tập)
+  exerciseUrl String?    // Link Bài tập sau buổi học (PDF gốc)
+  answerUrl   String?    // Link Đáp án bài tập (PDF gốc)
+  
   chapterId   String
   chapter     Chapter    @relation(fields: [chapterId], references: [id], onDelete: Cascade)
-  questions   Question[] // Danh sách bài tập tương tác đính kèm
+  questions   Question[] // Tích hợp bài tập tương tác trên web
   progress    Progress[]
 }
 
-// 5. Ngân hàng Câu hỏi Tương tác (Instant Feedback)
+// --- NGÂN HÀNG CÂU HỎI TƯƠNG TÁC ---
 model Question {
   id            String  @id @default(uuid())
   lessonId      String
@@ -63,11 +89,11 @@ model Question {
   imageUrl      String? // Ảnh đính kèm (nếu có sơ đồ, hình học)
   options       Json    // Mảng 4 đáp án (A, B, C, D)
   correctAnswer String  // Đáp án đúng
-  explanation   String? // Lời giải chi tiết hiện ra khi học viên chọn xong
-  order         Int     // Thứ tự câu hỏi trong bài
+  explanation   String? // Lời giải chi tiết
+  order         Int     
 }
 
-// 6. Theo dõi Tiến độ học tập & Thực hành
+// --- TIẾN ĐỘ & ĐIỀU KIỆN MỞ KHÓA ---
 model Progress {
   id             String   @id @default(uuid())
   userId         String
@@ -75,12 +101,11 @@ model Progress {
   lessonId       String
   lesson         Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
   
-  // Logic điều kiện hoàn thành bài học
-  videoCompleted Boolean  @default(false) // Xác nhận đã xem video bài giảng
-  exerciseScore  Float?   // Tỷ lệ % làm đúng bài tập tương tác
-  isCompleted    Boolean  @default(false) // True khi videoCompleted = true và exerciseScore >= 70%
+  videoCompleted Boolean  @default(false)
+  exerciseScore  Float?   
+  isCompleted    Boolean  @default(false)
   
   updatedAt      DateTime @updatedAt
 
-  @@unique([userId, lessonId]) // Đảm bảo mỗi học viên chỉ có 1 bản ghi tiến độ cho mỗi bài học
+  @@unique([userId, lessonId])
 }

@@ -1,24 +1,24 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-// Thêm Chương mới vào 1 Khóa học
+// Thêm Cụm kiến thức mới vào 1 Môn học (Subject)
 export async function POST(request: Request) {
   try {
-    const { courseId, title } = await request.json();
+    const { subjectId, title } = await request.json();
 
-    if (!courseId || !title) {
-      return NextResponse.json({ success: false, message: "Thiếu courseId hoặc tên chương" }, { status: 400 });
+    if (!subjectId || !title) {
+      return NextResponse.json({ success: false, message: "Thiếu subjectId hoặc tên cụm kiến thức" }, { status: 400 });
     }
 
-    const order = await prisma.chapter.count({ where: { courseId } });
+    const order = await prisma.chapter.count({ where: { subjectId } });
 
     const chapter = await prisma.chapter.create({
-      data: { title, courseId, order },
+      data: { title, subjectId, order },
     });
 
     return NextResponse.json({ success: true, chapter });
   } catch (error) {
     console.error("POST /api/admin/chapters error:", error);
-    return NextResponse.json({ success: false, message: "Lỗi tạo chương" }, { status: 500 });
+    return NextResponse.json({ success: false, message: "Lỗi tạo cụm kiến thức" }, { status: 500 });
   }
 }

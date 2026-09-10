@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { prisma } from "@/lib/prisma"; // Đã thêm ngoặc nhọn {} ở đây
 
-// Chi tiết 1 Khóa học (kèm Chapter + Lesson, sắp theo order)
+// Chi tiết 1 Khóa học (Lấy trọn vẹn 5 tầng: Course -> Stage -> Subject -> Chapter -> Lesson)
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -11,9 +11,21 @@ export async function GET(
     const course = await prisma.course.findUnique({
       where: { id },
       include: {
-        chapters: {
+        stages: {
           orderBy: { order: "asc" },
-          include: { lessons: { orderBy: { order: "asc" } } },
+          include: {
+            subjects: {
+              orderBy: { order: "asc" },
+              include: {
+                chapters: {
+                  orderBy: { order: "asc" },
+                  include: { 
+                    lessons: { orderBy: { order: "asc" } } 
+                  },
+                },
+              },
+            },
+          },
         },
       },
     });
@@ -48,7 +60,7 @@ export async function PATCH(
   }
 }
 
-// Xóa Khóa học (schema đã set onDelete: Cascade nên Chapter/Lesson/Question con sẽ tự xóa theo)
+// Xóa Khóa học
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
