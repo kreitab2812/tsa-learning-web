@@ -1,48 +1,70 @@
 "use client";
-import { useState } from "react";
-import { Plus, Video, Trash2, Edit3, BookOpen, Layers } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Plus, Trash2, Edit3, BookOpen, Loader2 } from "lucide-react";
 
 export default function AdminCoursesPage() {
-  // Mock dữ liệu khóa học ban đầu
-  const [courses, setCourses] = useState([
-    { 
-      id: "1", 
-      title: "TSA: Tư duy Toán học", 
-      description: "Chuyên đề luyện thi phần Toán tư duy định lượng.",
-      lessonsCount: 12 
-    },
-    { 
-      id: "2", 
-      title: "TSA: Đọc hiểu & Khoa học", 
-      description: "Phân tích cấu trúc văn bản và tư duy khoa học tự nhiên - xã hội.",
-      lessonsCount: 8 
-    },
-  ]);
-
+  const [courses, setCourses] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  
+  // State cho Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newDesc, setNewDesc] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleAddCourse = (e: React.FormEvent) => {
+  // 1. Lấy danh sách Khóa học từ Database khi load trang
+  const fetchCourses = async () => {
+    try {
+      const res = await fetch("/api/admin/courses");
+      const data = await res.json();
+      if (data.success) {
+        setCourses(data.courses);
+      }
+    } catch (error) {
+      console.error("Lỗi khi tải khóa học:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchCourses();
+  }, []);
+
+  // 2. Xử lý tạo Khóa học mới đẩy lên API
+  const handleAddCourse = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle) return;
+    setIsSubmitting(true);
 
-    const newCourse = {
-      id: Date.now().toString(),
-      title: newTitle,
-      description: newDesc,
-      lessonsCount: 0
-    };
-
-    setCourses([...courses, newCourse]);
-    setNewTitle("");
-    setNewDesc("");
-    setIsModalOpen(false);
+    try {
+      const res = await fetch("/api/admin/courses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: newTitle, description: newDesc }),
+      });
+      const data = await res.json();
+      
+      if (data.success) {
+        // Cập nhật lại UI ngay lập tức
+        setCourses([data.course, ...courses]);
+        setNewTitle("");
+        setNewDesc("");
+        setIsModalOpen(false);
+      } else {
+        alert(data.message || "Có lỗi xảy ra khi tạo khóa học.");
+      }
+    } catch (error) {
+      alert("Lỗi kết nối đến máy chủ.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleDelete = (id: string) => {
+    // Chặng sau chúng ta sẽ viết API DELETE cho nút này
     if (confirm("Cậu có chắc chắn muốn xóa khóa học này không?")) {
-      setCourses(courses.filter(c => c.id !== id));
+      alert("Chức năng xóa đang được hoàn thiện!");
     }
   };
 
@@ -50,10 +72,10 @@ export default function AdminCoursesPage() {
     <div className="space-y-6 animate-fade-up max-w-6xl mx-auto">
       
       {/* Tiêu đề & Nút thêm */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-3xl shadow-bkhn-sm border border-bkhn-pink">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-[1.5rem] shadow-bkhn-sm border border-bkhn-pink">
         <div>
-          <h1 className="text-2xl font-black text-gray-900 tracking-tight">Quản lý Khóa học & Video</h1>
-          <p className="text-gray-500 text-sm font-medium mt-1">Thêm mới các chuyên đề ôn thi và liên kết video bài giảng YouTube.</p>
+          <h1 className="text-2xl font-black text-gray-900 tracking-tight">Quản lý Khóa học</h1>
+          <p className="text-gray-500 text-sm font-medium mt-1">Quản lý các chuyên đề ôn thi và lộ trình học tập.</p>
         </div>
         <button
           onClick={() => setIsModalOpen(true)}
@@ -63,39 +85,58 @@ export default function AdminCoursesPage() {
         </button>
       </div>
 
-      {/* Lưới hiển thị danh sách khóa học */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {courses.map(course => (
-          <div key={course.id} className="bg-white p-6 rounded-3xl shadow-bkhn-sm border border-bkhn-pink flex flex-col justify-between hover:shadow-bkhn-lg transition-all relative group">
-            <div>
-              <div className="flex justify-between items-start mb-4">
-                <div className="w-12 h-12 bg-bkhn-rose rounded-2xl flex items-center justify-center text-bkhn-red border border-bkhn-pink">
-                  <BookOpen size={24} strokeWidth={2.5} />
+      {/* Trạng thái Loading */}
+      {isLoading ? (
+        <div className="flex justify-center items-center py-20">
+          <Loader2 className="animate-spin text-bkhn-red" size={40} />
+        </div>
+      ) : (
+        /* Lưới hiển thị danh sách khóa học */
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {courses.length === 0 && (
+            <div className="col-span-full text-center py-10 text-gray-500 font-medium bg-white rounded-3xl border border-dashed border-bkhn-pink">
+              Chưa có khóa học nào. Hãy tạo khóa học đầu tiên!
+            </div>
+          )}
+          {courses.map(course => (
+            <div key={course.id} className="bg-white p-6 rounded-[1.5rem] shadow-bkhn-sm border border-bkhn-pink flex flex-col justify-between hover:shadow-bkhn-lg transition-all relative group">
+              <div>
+                <div className="flex justify-between items-start mb-4">
+                  <div className="w-12 h-12 bg-bkhn-rose rounded-2xl flex items-center justify-center text-bkhn-red border border-bkhn-pink">
+                    <BookOpen size={24} strokeWidth={2.5} />
+                  </div>
+                  <span className="bg-bkhn-pale text-bkhn-red px-3 py-1 rounded-full text-xs font-black">
+                    {course.chapters?.length || 0} Chương
+                  </span>
                 </div>
-                <span className="bg-bkhn-pale text-bkhn-red px-3 py-1 rounded-full text-xs font-black">
-                  {course.lessonsCount} Bài học
-                </span>
+                <h3 className="text-xl font-black text-gray-900 mb-2 line-clamp-1">{course.title}</h3>
+                <p className="text-sm text-gray-500 font-medium leading-relaxed line-clamp-2">
+                  {course.description || "Chưa có mô tả chi tiết."}
+                </p>
               </div>
-              <h3 className="text-xl font-black text-gray-900 mb-2">{course.title}</h3>
-              <p className="text-sm text-gray-500 font-medium leading-relaxed">{course.description || "Chưa có mô tả chi tiết."}</p>
-            </div>
 
-            <div className="mt-6 pt-4 border-t border-bkhn-pink flex justify-end gap-2">
-              <button className="p-2.5 bg-gray-50 text-gray-600 hover:bg-bkhn-pale hover:text-bkhn-red rounded-xl transition-colors" title="Chỉnh sửa">
-                <Edit3 size={16} strokeWidth={2.5} />
-              </button>
-              <button onClick={() => handleDelete(course.id)} className="p-2.5 bg-gray-50 text-gray-600 hover:bg-red-50 hover:text-red-600 rounded-xl transition-colors" title="Xóa">
-                <Trash2 size={16} strokeWidth={2.5} />
-              </button>
+              <div className="mt-6 pt-4 border-t border-bkhn-pink flex justify-between items-center">
+                <span className="text-xs font-bold text-gray-400">
+                  ID: {course.id.slice(0, 8)}...
+                </span>
+                <div className="flex gap-2">
+                  <button className="p-2.5 bg-gray-50 text-gray-600 hover:bg-bkhn-pale hover:text-bkhn-red rounded-xl transition-colors" title="Chỉnh sửa">
+                    <Edit3 size={16} strokeWidth={2.5} />
+                  </button>
+                  <button onClick={() => handleDelete(course.id)} className="p-2.5 bg-gray-50 text-gray-600 hover:bg-red-50 hover:text-red-600 rounded-xl transition-colors" title="Xóa">
+                    <Trash2 size={16} strokeWidth={2.5} />
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
       {/* Modal Thêm Khóa học */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-white rounded-3xl max-w-md w-full p-8 shadow-2xl border border-bkhn-pink animate-fade-up">
+          <div className="bg-white rounded-[2rem] max-w-md w-full p-8 shadow-2xl border border-bkhn-pink animate-fade-up">
             <h3 className="text-xl font-black text-gray-900 mb-4">Tạo Khóa học Mới</h3>
             
             <form onSubmit={handleAddCourse} className="space-y-4">
@@ -106,7 +147,7 @@ export default function AdminCoursesPage() {
                   required
                   value={newTitle}
                   onChange={e => setNewTitle(e.target.value)}
-                  placeholder="VD: TSA: Tư duy Khoa học..."
+                  placeholder="VD: Tổng ôn TSA - Phần Tư duy Toán học"
                   className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium focus:outline-none focus:border-bkhn-red focus:bg-white transition-all"
                 />
               </div>
@@ -132,9 +173,10 @@ export default function AdminCoursesPage() {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 bg-bkhn-red hover:bg-red-700 text-white font-bold py-3 rounded-xl transition-all shadow-sm text-sm"
+                  disabled={isSubmitting}
+                  className="flex-1 bg-bkhn-red hover:bg-red-700 text-white font-bold py-3 rounded-xl transition-all shadow-sm text-sm flex justify-center items-center"
                 >
-                  Tạo mới
+                  {isSubmitting ? <Loader2 className="animate-spin" size={18} /> : "Tạo mới"}
                 </button>
               </div>
             </form>
