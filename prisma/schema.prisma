@@ -1,0 +1,86 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// 1. Phân quyền Người dùng (RBAC)
+enum Role {
+  ADMIN
+  STUDENT
+}
+
+model User {
+  id        String     @id @default(uuid())
+  email     String     @unique
+  password  String
+  name      String?
+  role      Role       @default(STUDENT)
+  progress  Progress[]
+  createdAt DateTime   @default(now())
+}
+
+// 2. Khóa học tổng (VD: Tổng ôn TSA - Phần Tư duy Toán học)
+model Course {
+  id          String    @id @default(uuid())
+  title       String
+  description String?
+  chapters    Chapter[]
+  createdAt   DateTime  @default(now())
+}
+
+// 3. Chương / Tháng (VD: THÁNG 6-2026, THÁNG 7-2026)
+model Chapter {
+  id       String   @id @default(uuid())
+  title    String
+  order    Int      // Thứ tự hiển thị
+  courseId String
+  course   Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lessons  Lesson[]
+}
+
+// 4. Bài học chi tiết (Tích hợp Học & Hành)
+model Lesson {
+  id          String     @id @default(uuid())
+  title       String
+  order       Int
+  videoUrl    String?    // Link YouTube iframe
+  documentUrl String?    // Link PDF Google Drive (Nhiệm vụ học tập / Phiếu học tập)
+  chapterId   String
+  chapter     Chapter    @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  questions   Question[] // Danh sách bài tập tương tác đính kèm
+  progress    Progress[]
+}
+
+// 5. Ngân hàng Câu hỏi Tương tác (Instant Feedback)
+model Question {
+  id            String  @id @default(uuid())
+  lessonId      String
+  lesson        Lesson  @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  content       String  // Nội dung đề bài
+  imageUrl      String? // Ảnh đính kèm (nếu có sơ đồ, hình học)
+  options       Json    // Mảng 4 đáp án (A, B, C, D)
+  correctAnswer String  // Đáp án đúng
+  explanation   String? // Lời giải chi tiết hiện ra khi học viên chọn xong
+  order         Int     // Thứ tự câu hỏi trong bài
+}
+
+// 6. Theo dõi Tiến độ học tập & Thực hành
+model Progress {
+  id             String   @id @default(uuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lessonId       String
+  lesson         Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  
+  // Logic điều kiện hoàn thành bài học
+  videoCompleted Boolean  @default(false) // Xác nhận đã xem video bài giảng
+  exerciseScore  Float?   // Tỷ lệ % làm đúng bài tập tương tác
+  isCompleted    Boolean  @default(false) // True khi videoCompleted = true và exerciseScore >= 70%
+  
+  updatedAt      DateTime @updatedAt
+
+  @@unique([userId, lessonId]) // Đảm bảo mỗi học viên chỉ có 1 bản ghi tiến độ cho mỗi bài học
+}
