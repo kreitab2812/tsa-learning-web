@@ -1,46 +1,12 @@
-import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { adminHandler } from "@/server/http/handler";
+import { readJson } from "@/server/http/request";
+import { courseSchema } from "@/features/content/schemas";
+import { createCourse } from "@/server/admin/content-mutations";
+import { listAdminCourses } from "@/server/admin/course-queries";
+import { pageNumber } from "@/server/http/pagination";
 
-// Lấy danh sách toàn bộ Khóa học
-export async function GET() {
-  try {
-    const courses = await prisma.course.findMany({
-      orderBy: { createdAt: 'desc' },
-      include: {
-        stages: {
-          include: {
-            subjects: true // Lấy thêm subject để thống kê nếu cần
-          }
-        }
-      }
-    });
-    return NextResponse.json({ success: true, courses });
-  } catch (error) {
-    console.error("GET /api/admin/courses error:", error);
-    return NextResponse.json({ success: false, message: "Lỗi tải dữ liệu" }, { status: 500 });
-  }
-}
+export const GET = adminHandler(async (request) => listAdminCourses(pageNumber(request)));
 
-// Thêm mới một Khóa học
-export async function POST(request: Request) {
-  try {
-    const body = await request.json();
-    const { title, description } = body;
-
-    if (!title) {
-      return NextResponse.json({ success: false, message: "Thiếu tên khóa học" }, { status: 400 });
-    }
-
-    const newCourse = await prisma.course.create({
-      data: {
-        title,
-        description,
-      }
-    });
-
-    return NextResponse.json({ success: true, course: newCourse });
-  } catch (error) {
-    console.error("POST /api/admin/courses error:", error);
-    return NextResponse.json({ success: false, message: "Lỗi tạo khóa học" }, { status: 500 });
-  }
-}
+export const POST = adminHandler(async (request) => ({
+  course: await createCourse(await readJson(request, courseSchema)),
+}));

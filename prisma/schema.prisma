@@ -6,106 +6,414 @@ datasource db {
   provider = "postgresql"
 }
 
-// 1. Phân quyền Người dùng (RBAC)
+// ================================
+// ENUMS
+// ================================
+
+// Phân quyền Người dùng (RBAC)
 enum Role {
   ADMIN
   STUDENT
 }
 
+// Trạng thái xuất bản nội dung — cho phép Admin xây dựng "ngầm"
+// trước khi Học viên thấy được
+enum ContentStatus {
+  DRAFT
+  PUBLISHED
+  SCHEDULED // MỚI
+}
+
+enum StageAccessMode {
+  FREE // Mở tự do
+  TIME_LOCKED // Khóa theo thời gian
+  SEQUENTIAL // Khóa tuần tự (phụ thuộc Progress — thực thi ở Sprint 2)
+}
+
+enum LessonStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum LessonCompletionMode {
+  MANUAL
+  QUIZ_SUBMITTED
+  QUIZ_PASSED
+}
+
+enum LessonStepNavigation {
+  FREE
+  SEQUENTIAL
+}
+
+enum LessonSection {
+  THEORY
+  PRACTICE
+  DOCUMENTS
+}
+
+// Các dạng câu hỏi tương tác hỗ trợ, khớp với format đề TSA thực tế
+enum QuestionType {
+  MULTIPLE_CHOICE // Trắc nghiệm 4 đáp án, chọn 1
+  TRUE_FALSE_GROUP // 1 đề bài, nhiều mệnh đề con, mỗi mệnh đề tự Đúng/Sai
+  SHORT_ANSWER // Nhập đáp án ngắn (số hoặc text)
+}
+
+enum LearningActivityType {
+  LESSON_OPENED
+  LESSON_COMPLETED
+  EXERCISE_SUBMITTED
+}
+
+enum LinkHealthStatus {
+  UNKNOWN
+  HEALTHY
+  BROKEN
+  BLOCKED
+}
+
+enum LearningErrorType {
+  VIDEO_LOAD
+  DOCUMENT_LOAD
+  SUBMISSION
+}
+
+// ================================
+// MODELS
+// ================================
+
 model User {
-  id        String     @id @default(uuid())
-  email     String     @unique
-  password  String
-  name      String?
-  role      Role       @default(STUDENT)
-  progress  Progress[]
-  createdAt DateTime   @default(now())
+  id           String     @id @default(uuid())
+  email        String     @unique
+  passwordHash String
+  name         String?
+  role         Role       @default(STUDENT)
+  progress     Progress[]
+  createdAt    DateTime   @default(now())
+  sessions     Session[]
+  activities   LearningActivity[]
+  attempts     ExerciseAttempt[]
+  learningErrors LearningError[]
+  driveConnection GoogleDriveConnection?
+  lessonRuns LessonRun[]
+  quizSessions QuizSession[]
+  videoWatches VideoWatch[]
+}
+
+model GoogleDriveConnection {
+  userId       String @id
+  user         User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  email        String
+  refreshToken String // AES-256-GCM encrypted; never returned by API.
+  updatedAt    DateTime @updatedAt
+}
+
+model Session {
+  tokenHash String   @id
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model LoginThrottle {
+  key       String   @id
+  attempts  Int
+  expiresAt DateTime
+
+  @@index([expiresAt])
 }
 
 // --- TẦNG 1: KHÓA HỌC GỐC (VD: TSA - hocmai) ---
 model Course {
-  id          String   @id @default(uuid())
-  title       String
-  description String?
-  stages      Stage[]  // Chứa nhiều Giai đoạn
-  createdAt   DateTime @default(now())
+  id            String        @id @default(uuid())
+  title         String
+  description   String?
+  thumbnailUrl  String? // MỚI — ảnh bìa
+  badge         String? // MỚI — "Hot", "Mới"... (text tự do, không enum, để đổi chữ thoải mái)
+  status        ContentStatus @default(DRAFT)
+  publishAt     DateTime? // MỚI — chỉ có ý nghĩa khi status = SCHEDULED
+  showCountdown Boolean       @default(true) // MỚI — true: hiện kèm đếm ngược, false: ẩn hoàn toàn tới giờ G
+  stages        Stage[]
+  createdAt     DateTime      @default(now())
+
+  @@index([status, publishAt])
 }
 
 // --- TẦNG 2: GIAI ĐOẠN ---
 model Stage {
-  id          String    @id @default(uuid())
+  id          String          @id @default(uuid())
   title       String
-  description String?   // Thêm mô tả Giai đoạn
-  color       String?   // Thêm mã màu (VD: #ef4444)
-  order       Int       
+  description String?
+  color       String?
+  timeframe   String? // MỚI — "Tháng 6 - Tháng 8/2026"
+  accessMode  StageAccessMode @default(FREE) // MỚI
+  unlockAt    DateTime? // MỚI — dùng khi accessMode = TIME_LOCKED
+  order       Int
   courseId    String
-  course      Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  subjects    Subject[] 
+  course      Course          @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  subjects    Subject[]
+
+  @@index([courseId, order])
 }
 
 // --- TẦNG 3: PHÂN MÔN ---
 model Subject {
   id          String    @id @default(uuid())
   title       String
-  description String?   // Thêm mô tả Môn học
-  order       Int       
+  description String?
+  teacherName String? // MỚI
+  order       Int
   stageId     String
   stage       Stage     @relation(fields: [stageId], references: [id], onDelete: Cascade)
-  chapters    Chapter[] 
+  chapters    Chapter[]
+
+  @@index([stageId, order])
 }
 
 // --- TẦNG 4: CỤM KIẾN THỨC / CHƯƠNG (VD: Đại số, Hàm số) ---
+// Đệ quy qua parentId — cho phép lồng nhiều tầng khi cần (VD: môn Văn:
+// "Đọc hiểu văn bản" -> "Truyện"/"Thơ"/"Kí"...). Các môn không cần lồng
+// (Toán, Lý, Hóa...) chỉ cần bỏ trống parentId, hoạt động y hệt model cũ.
 model Chapter {
-  id        String   @id @default(uuid())
-  title     String
-  order     Int      // Thứ tự Cụm kiến thức
-  subjectId String
-  subject   Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  lessons   Lesson[] // Chứa nhiều Bài học
+  id          String       @id @default(uuid())
+  title       String
+  description String?
+  status      LessonStatus @default(DRAFT)
+  openAt      DateTime?
+  closeAt     DateTime?
+  order       Int // Thứ tự Cụm kiến thức
+  subjectId   String
+  subject     Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  parentId String?
+  parent   Chapter?  @relation("ChapterTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children Chapter[] @relation("ChapterTree")
+
+  lessons Lesson[] // Chứa nhiều Bài học (thường chỉ Chapter "lá" mới có)
+
+  @@index([subjectId, parentId, order])
+  @@index([parentId])
 }
 
 // --- TẦNG 5: BÀI HỌC CHI TIẾT ---
 model Lesson {
-  id          String     @id @default(uuid())
-  title       String
-  order       Int
-  videoUrl    String?    // Link Video bài giảng
-  documentUrl String?    // Link Tài liệu học tập (Nhiệm vụ/Phiếu học tập)
-  exerciseUrl String?    // Link Bài tập sau buổi học (PDF gốc)
-  answerUrl   String?    // Link Đáp án bài tập (PDF gốc)
-  
-  chapterId   String
-  chapter     Chapter    @relation(fields: [chapterId], references: [id], onDelete: Cascade)
-  questions   Question[] // Tích hợp bài tập tương tác trên web
-  progress    Progress[]
+  id     String       @id @default(uuid())
+  title  String
+  order  Int
+  status LessonStatus @default(DRAFT)
+
+  videoTheoryUrl   String? // Link Video phần Lý thuyết
+  videoPracticeUrl String? // Link Video phần Thực hành
+  documentUrl      String? // Link Tài liệu học tập (Nhiệm vụ/Phiếu học tập)
+  exerciseUrl      String? // Link Bài tập sau buổi học (PDF gốc, để tham khảo)
+  answerUrl        String? // Link Đáp án bài tập (PDF gốc, để tham khảo)
+
+  theoryDocumentUrl   String?
+  practiceDocumentUrl String?
+  theorySplitView     Boolean @default(true)
+  practiceSplitView   Boolean @default(true)
+
+  // Enforced by the lesson workflow and captured when a quiz session starts.
+  completionMode          LessonCompletionMode @default(MANUAL)
+  stepNavigation          LessonStepNavigation @default(FREE)
+  requireCompletionForNext Boolean @default(false)
+  quizTimeLimitMinutes    Int?
+  quizPassPercent         Int @default(60)
+  quizMaxAttempts         Int?
+  quizShuffleQuestions    Boolean @default(false)
+  quizShuffleAnswers      Boolean @default(false)
+  attachments             LessonAttachment[]
+
+  chapterId String
+  chapter   Chapter    @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  questions Question[] // Bài tập tương tác trên web (nguồn chính)
+  progress  Progress[]
+  activities LearningActivity[]
+  attempts   ExerciseAttempt[]
+  linkHealth LessonLinkHealth[]
+  learningErrors LearningError[]
+  lessonRuns LessonRun[]
+  quizSessions QuizSession[]
+  videoWatches VideoWatch[]
+
+  @@index([chapterId, order])
 }
 
-// --- NGÂN HÀNG CÂU HỎI TƯƠNG TÁC ---
-model Question {
-  id            String  @id @default(uuid())
+model VideoWatch {
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lessonId String
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  section String
+  videoId String
+  duration Float
+  ranges Json @default("[]")
+  updatedAt DateTime @updatedAt
+  @@id([userId, lessonId, section, videoId])
+  @@index([lessonId])
+}
+
+// Legacy URL fields remain readable by the current learner and health screens.
+// sourceKey identifies their synchronized attachment; null allows future extras.
+model LessonAttachment {
+  id            String @id @default(uuid())
   lessonId      String
-  lesson        Lesson  @relation(fields: [lessonId], references: [id], onDelete: Cascade)
-  content       String  // Nội dung đề bài
-  imageUrl      String? // Ảnh đính kèm (nếu có sơ đồ, hình học)
-  options       Json    // Mảng 4 đáp án (A, B, C, D)
-  correctAnswer String  // Đáp án đúng
-  explanation   String? // Lời giải chi tiết
-  order         Int     
+  lesson        Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  title         String
+  url           String
+  section       LessonSection @default(DOCUMENTS)
+  order         Int
+  sourceKey     String?
+  allowDownload Boolean @default(true)
+  watermark     Boolean @default(false)
+  kind          String @default("PDF")
+  mimeType      String?
+  sizeBytes     Int?
+  driveFileId   String? @unique
+
+  @@unique([lessonId, sourceKey])
+  @@index([lessonId, section, order])
 }
 
-// --- TIẾN ĐỘ & ĐIỀU KIỆN MỞ KHÓA ---
-model Progress {
+model LearningActivity {
+  id        String               @id @default(uuid())
+  type      LearningActivityType
+  userId    String
+  user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lessonId  String
+  lesson    Lesson               @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  metadata  Json?
+  createdAt DateTime             @default(now())
+
+  @@index([userId, createdAt])
+  @@index([lessonId, createdAt])
+}
+
+model ExerciseAttempt {
   id             String   @id @default(uuid())
   userId         String
   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   lessonId       String
   lesson         Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
-  
-  videoCompleted Boolean  @default(false)
-  exerciseScore  Float?   
-  isCompleted    Boolean  @default(false)
-  
+  score          Float
+  correctCount   Int
+  totalQuestions Int
+  answers        Json
+  sessionId      String? @unique
+  session        QuizSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  createdAt      DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([lessonId, createdAt])
+}
+
+// Preview rows belong to the Admin, never to the real student's Progress.
+model LessonRun {
+  id             String @id @default(uuid())
+  userId         String
+  user           User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lessonId       String
+  lesson         Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  preview        Boolean @default(false)
+  currentStep    Int @default(0)
+  completedSteps Int[] @default([])
+  completed      Boolean @default(false)
   updatedAt      DateTime @updatedAt
 
+  @@unique([userId, lessonId, preview])
+  @@index([lessonId])
+}
+
+model QuizSession {
+  id          String @id // Client request UUID makes START retries idempotent.
+  userId      String
+  user        User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lessonId    String
+  lesson      Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  preview     Boolean @default(false)
+  activeKey   String? @unique // Cleared only on finalization: one active session per learner/lesson/mode.
+  snapshot    Json // Immutable questions, keys, explanations, order and quiz settings. Server-only.
+  answers     Json @default("{}")
+  revision    Int @default(0)
+  startedAt   DateTime @default(now())
+  deadlineAt  DateTime?
+  submittedAt DateTime?
+  result      Json?
+  attempt     ExerciseAttempt?
+
+  @@index([userId, lessonId, preview, startedAt])
+}
+
+model LessonLinkHealth {
+  id         String           @id @default(uuid())
+  lessonId   String
+  lesson     Lesson           @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  kind       String
+  url        String
+  status     LinkHealthStatus @default(UNKNOWN)
+  statusCode Int?
+  error      String?
+  checkedAt  DateTime?
+
+  @@unique([lessonId, kind])
+  @@index([status, checkedAt])
+}
+
+model LearningError {
+  id          String            @id @default(uuid())
+  type        LearningErrorType
+  message     String
+  resourceUrl String?
+  userId      String
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lessonId    String
+  lesson      Lesson            @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  createdAt   DateTime          @default(now())
+
+  @@index([userId, createdAt])
+  @@index([lessonId, type, createdAt])
+}
+
+// --- NGÂN HÀNG CÂU HỎI TƯƠNG TÁC ---
+// `options` mang cấu trúc khác nhau tùy `type`:
+//  - MULTIPLE_CHOICE: mảng 4 đáp án [{ id: "A", text: "..." }, ...]
+//  - TRUE_FALSE_GROUP: mảng mệnh đề con [{ id: "a", text: "...", isTrue: true }, ...]
+//  - SHORT_ANSWER: null (không cần), đáp án nằm ở `correctAnswer`
+// Nội dung mọi field text (content/explanation/text trong options) có thể
+// chứa công thức LaTeX bọc trong $...$, được KaTeX render phía hiển thị.
+model Question {
+  id            String       @id @default(uuid())
+  lessonId      String
+  lesson        Lesson       @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  type          QuestionType @default(MULTIPLE_CHOICE)
+  content       String // Nội dung đề bài
+  imageUrl      String? // Ảnh đính kèm (nếu có sơ đồ, hình học)
+  options       Json? // Cấu trúc tùy `type`, xem chú thích trên
+  correctAnswer String? // Dùng cho MULTIPLE_CHOICE và SHORT_ANSWER
+  explanation   String? // Lời giải chi tiết
+  order         Int
+
+  @@index([lessonId, order])
+}
+
+// --- TIẾN ĐỘ & ĐIỀU KIỆN MỞ KHÓA ---
+model Progress {
+  id       String @id @default(uuid())
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lessonId String
+  lesson   Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  videoCompleted Boolean @default(false)
+  exerciseScore  Float?
+  isCompleted    Boolean @default(false)
+
+  updatedAt DateTime @updatedAt
+
   @@unique([userId, lessonId])
+  @@index([lessonId])
 }

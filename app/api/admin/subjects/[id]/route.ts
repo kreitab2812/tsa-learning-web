@@ -1,19 +1,18 @@
-import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { adminHandler, routeId, type IdContext } from "@/server/http/handler";
+import { readJson } from "@/server/http/request";
+import { subjectPatchSchema } from "@/features/content/schemas";
+import { updateSubject, deleteContent } from "@/server/admin/content-mutations";
+import { getAdminSubjectTree } from "@/server/admin/course-queries";
 
-export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await params;
-    const { title, description } = await request.json();
-    const updated = await prisma.subject.update({ where: { id }, data: { title, description } });
-    return NextResponse.json({ success: true, subject: updated });
-  } catch (error) { return NextResponse.json({ success: false }, { status: 500 }); }
-}
+export const GET = adminHandler(async (_request, context: IdContext) => ({
+  subject: await getAdminSubjectTree(await routeId(context)),
+}));
 
-export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await params;
-    await prisma.subject.delete({ where: { id } });
-    return NextResponse.json({ success: true });
-  } catch (error) { return NextResponse.json({ success: false }, { status: 500 }); }
-}
+export const PATCH = adminHandler(async (request, context: IdContext) => ({
+  subject: await updateSubject(await routeId(context), await readJson(request, subjectPatchSchema)),
+}));
+
+export const DELETE = adminHandler(async (_request, context: IdContext) => {
+  await deleteContent("subject", await routeId(context));
+  return {};
+});

@@ -1,19 +1,13 @@
-import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { adminHandler, routeId, type IdContext } from "@/server/http/handler";
+import { readJson } from "@/server/http/request";
+import { stagePatchSchema } from "@/features/content/schemas";
+import { updateStage, deleteContent } from "@/server/admin/content-mutations";
 
-export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await params;
-    const { title, description, color } = await request.json();
-    const updated = await prisma.stage.update({ where: { id }, data: { title, description, color } });
-    return NextResponse.json({ success: true, stage: updated });
-  } catch (error) { return NextResponse.json({ success: false }, { status: 500 }); }
-}
+export const PATCH = adminHandler(async (request, context: IdContext) => ({
+  stage: await updateStage(await routeId(context), await readJson(request, stagePatchSchema)),
+}));
 
-export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await params;
-    await prisma.stage.delete({ where: { id } });
-    return NextResponse.json({ success: true });
-  } catch (error) { return NextResponse.json({ success: false }, { status: 500 }); }
-}
+export const DELETE = adminHandler(async (_request, context: IdContext) => {
+  await deleteContent("stage", await routeId(context));
+  return {};
+});

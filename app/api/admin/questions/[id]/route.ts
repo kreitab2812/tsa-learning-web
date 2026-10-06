@@ -1,41 +1,13 @@
-import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { adminHandler, routeId, type IdContext } from "@/server/http/handler";
+import { readJson } from "@/server/http/request";
+import { questionPatchSchema } from "@/features/content/schemas";
+import { updateQuestion, deleteContent } from "@/server/admin/content-mutations";
 
-export async function PATCH(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const { id } = await params;
-    const { content, imageUrl, options, correctAnswer, explanation } = await request.json();
+export const PATCH = adminHandler(async (request, context: IdContext) => ({
+  question: await updateQuestion(await routeId(context), await readJson(request, questionPatchSchema, 512 * 1024)),
+}));
 
-    const question = await prisma.question.update({
-      where: { id },
-      data: {
-        ...(content !== undefined && { content }),
-        ...(imageUrl !== undefined && { imageUrl }),
-        ...(options !== undefined && { options }),
-        ...(correctAnswer !== undefined && { correctAnswer }),
-        ...(explanation !== undefined && { explanation }),
-      },
-    });
-    return NextResponse.json({ success: true, question });
-  } catch (error) {
-    console.error("PATCH /api/admin/questions/[id] error:", error);
-    return NextResponse.json({ success: false, message: "Lỗi cập nhật câu hỏi" }, { status: 500 });
-  }
-}
-
-export async function DELETE(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const { id } = await params;
-    await prisma.question.delete({ where: { id } });
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error("DELETE /api/admin/questions/[id] error:", error);
-    return NextResponse.json({ success: false, message: "Lỗi xóa câu hỏi" }, { status: 500 });
-  }
-}
+export const DELETE = adminHandler(async (_request, context: IdContext) => {
+  await deleteContent("question", await routeId(context));
+  return {};
+});

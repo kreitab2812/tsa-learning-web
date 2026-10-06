@@ -1,35 +1,13 @@
-import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { adminHandler, routeId, type IdContext } from "@/server/http/handler";
+import { readJson } from "@/server/http/request";
+import { chapterPatchSchema } from "@/features/content/schemas";
+import { updateChapter, deleteContent } from "@/server/admin/content-mutations";
 
-export async function PATCH(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const { id } = await params;
-    const { title, order } = await request.json();
+export const PATCH = adminHandler(async (request, context: IdContext) => ({
+  chapter: await updateChapter(await routeId(context), await readJson(request, chapterPatchSchema)),
+}));
 
-    const chapter = await prisma.chapter.update({
-      where: { id },
-      data: { title, ...(order !== undefined && { order }) },
-    });
-    return NextResponse.json({ success: true, chapter });
-  } catch (error) {
-    console.error("PATCH /api/admin/chapters/[id] error:", error);
-    return NextResponse.json({ success: false, message: "Lỗi cập nhật chương" }, { status: 500 });
-  }
-}
-
-export async function DELETE(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const { id } = await params;
-    await prisma.chapter.delete({ where: { id } }); // Cascade xóa luôn Lesson/Question bên trong
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error("DELETE /api/admin/chapters/[id] error:", error);
-    return NextResponse.json({ success: false, message: "Lỗi xóa chương" }, { status: 500 });
-  }
-}
+export const DELETE = adminHandler(async (_request, context: IdContext) => {
+  await deleteContent("chapter", await routeId(context));
+  return {};
+});

@@ -1,0 +1,11 @@
+.env*
+.local/
+.git/
+.agents/
+.claude/
+.cursor/
+.devin/
+tests/
+docs/
+*.log
+*.tsbuildinfo

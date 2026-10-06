@@ -1,10 +1,3 @@
-import { PrismaClient } from "@prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
-
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
-
-const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
-
-export const prisma = globalForPrisma.prisma || new PrismaClient({ adapter });
-
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+// Transitional export for existing route handlers. New server-side code should
+// import from `@/server/db/prisma` directly.
+export { prisma } from "@/server/db/prisma";

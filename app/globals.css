@@ -14,11 +14,15 @@
 }
 
 body {
-  background-color: #fcfcfc;
-  background-image: radial-gradient(var(--color-bkhn-pink) 1.5px, transparent 1.5px);
-  background-size: 24px 24px;
+  background-color: #faf9fa;
   color: #333;
   font-family: var(--font-geist-sans), sans-serif;
+}
+
+@layer components {
+  .pagination-button {
+    @apply inline-flex min-h-10 min-w-10 items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 text-xs font-bold text-gray-600 transition-colors hover:border-bkhn-pink hover:bg-bkhn-rose hover:text-bkhn-red disabled:cursor-not-allowed disabled:border-gray-100 disabled:bg-gray-50 disabled:text-gray-300;
+  }
 }
 
 /* Các vệt sáng mờ trang trí phía sau (Hero Deco) */
@@ -55,13 +59,35 @@ body {
 }
 
 .animate-fade-in {
-  animation: fadeIn 0.5s ease-out forwards;
+  animation: fadeIn 0.18s ease-out forwards;
 }
 .animate-fade-up {
-  animation: fadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: fadeUp 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+:where(a, button, input, select, textarea, summary, [role="button"]):focus-visible {
+  outline: 2px solid var(--color-bkhn-red);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* Custom Scrollbar */
+.lesson-media-focus [data-media-frame] {
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+}
+.lesson-media-focus [data-media-surface] { min-height: 0; }
+.lesson-media-focus [data-media-chrome] { display: none; }
+
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(200, 0, 26, 0.2); border-radius: 10px; }

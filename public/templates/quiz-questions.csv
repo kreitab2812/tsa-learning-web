@@ -1,0 +1,4 @@
+type,content,A,B,C,D,correctAnswer,trueFalse,imageUrl,explanation
+MULTIPLE_CHOICE,Tính $2^3$.,6,8,9,12,B,,,$2^3 = 2 \times 2 \times 2 = 8$.
+TRUE_FALSE_GROUP,Các mệnh đề về số 2:,Là số chẵn,Là số lẻ,Lớn hơn 1,Nhỏ hơn 0,,"true,false,true,false",,
+SHORT_ANSWER,Tính $3 + 4$.,,,,,7,,,Kết quả là **7**.
